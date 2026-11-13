@@ -1,0 +1,40 @@
+# Local development database. Start with: docker compose up -d
+# PostGIS is included now so field maps and geofences (later releases) need no image change.
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/10-farmulator.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Optional: run the API in a container too.
+  #   docker compose --profile api run --rm api alembic upgrade head
+  #   docker compose --profile api up api
+  api:
+    build: .
+    profiles: ["api"]
+    environment:
+      FARMULATOR_ENVIRONMENT: development
+      FARMULATOR_DEV_AUTH_ENABLED: "true"
+      FARMULATOR_APP_DB_ROLE: farmulator_app
+      FARMULATOR_DATABASE_URL: postgresql+asyncpg://farmulator_app:farmulator_app@db:5432/farmulator
+      FARMULATOR_MIGRATION_DATABASE_URL: postgresql+asyncpg://farmulator_owner:farmulator_owner@db:5432/farmulator
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
