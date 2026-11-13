@@ -11,9 +11,11 @@ from farmulator import __version__
 from farmulator.core.config import Settings, get_settings
 from farmulator.core.db import make_engine, make_sessionmaker
 from farmulator.core.errors import install_error_handlers, problem
+from farmulator.modules.breeding.router import router as breeding_router
 from farmulator.modules.farm.router import router as farm_router
 from farmulator.modules.livestock.router import router as livestock_router
 from farmulator.modules.stock.router import router as stock_router
+from farmulator.modules.tasks.router import router as tasks_router
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -39,6 +41,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(farm_router)
     app.include_router(livestock_router)
     app.include_router(stock_router)
+    app.include_router(breeding_router)
+    app.include_router(tasks_router)
 
     @app.get("/health", tags=["system"])
     async def health(request: Request) -> object:
