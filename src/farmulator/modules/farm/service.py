@@ -8,6 +8,7 @@ from sqlalchemy.orm.exc import StaleDataError
 from farmulator.core.deps import RequestContext
 from farmulator.core.errors import Conflict, Invalid
 from farmulator.core.repo import get_or_404, get_ref
+from farmulator.modules.breeding.reference import seed_default_protocols
 from farmulator.modules.farm.models import Enterprise, Farm, Location, Tenant
 from farmulator.modules.farm.schemas import (
     EnterpriseCreate,
@@ -31,9 +32,10 @@ async def create_tenant(session: AsyncSession, data: TenantCreate, tenant_id: uu
     )
     session.add(tenant)
     await session.flush()
-    for spec in DEFAULT_SPECIES:
-        session.add(Species(tenant_id=tenant_id, **spec))
+    species = [Species(id=uuid.uuid4(), tenant_id=tenant_id, **spec) for spec in DEFAULT_SPECIES]
+    session.add_all(species)
     await session.flush()
+    await seed_default_protocols(session, tenant_id, {s.code: s.id for s in species})
     return tenant
 
 

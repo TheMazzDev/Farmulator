@@ -13,6 +13,10 @@ This first cut covers the R1 core:
   farm's inbreeding limit.
 - **Stock:** products, lots with cost, batch and expiry, and an append-only movement
   ledger. Stock is issued first-expiry-first (FEFO) and each issue is costed.
+- **Breeding calendar:** protocol templates, breeding cycles (service, pregnancy check,
+  birth, weaning) and litters. Recording a service schedules every task up to weaning.
+- **Tasks:** one to-do list with due, overdue, done and skipped tasks. Ticking off a
+  vaccination records it on the animal and takes the dose out of stock.
 
 ## Quick start
 
@@ -67,7 +71,9 @@ src/farmulator/
     farm/          tenants, farms, locations, enterprises
     livestock/     species, breeds, animals, groups, events, pedigree
     stock/         products, lots, movements
-migrations/        Alembic; 0001 also sets up row-level security and grants
+    breeding/      protocols, breeding cycles, litters, schedule generation, reports
+    tasks/         scheduled tasks: list, complete, skip, reminders
+migrations/        Alembic; each migration also sets up row-level security and grants
 tests/
 ```
 
@@ -136,6 +142,9 @@ the profit engine will charge feed and drugs to the right part of the business.
 | Livestock | `/v1/species`, `/v1/breeds`, `/v1/animals` (filters, cursor paging), `/v1/animals/{id}/events`, `/v1/animal-groups`, `POST /v1/animal-events` |
 | Pedigree | `GET /v1/animals/{id}/pedigree`, `GET /v1/animals/{id}/inbreeding`, `POST /v1/breeding/mating-check` |
 | Stock | `/v1/products`, `POST /v1/stock/receipts`, `/issues`, `/transfers`, `/adjustments`, `GET /v1/stock/lots`, `/v1/stock/on-hand` |
+| Breeding | `/v1/protocols`, `POST /v1/breeding/services`, `/v1/breeding/cycles`, `POST /v1/breeding/cycles/{id}/pregnancy-check`, `/birth`, `/weaning` |
+| Tasks | `/v1/tasks` (filter by state, farm, animal, dates), `GET /v1/tasks/reminders`, `POST /v1/tasks/{id}/complete`, `/skip` |
+| Reports | `GET /v1/reports/breeding/farrowings-due`, `/v1/reports/breeding/litters`, `/v1/reports/tasks/compliance` |
 
 Some rules worth knowing:
 
@@ -144,6 +153,34 @@ Some rules worth knowing:
   giving `override_reason`; the override is recorded on the event.
 - Stock issues skip expired lots and draw from the lot that expires first.
 - Transfers keep each lot's cost, batch and expiry.
+
+### How the breeding calendar works
+
+- A **protocol** is a list of steps, each timed in days from an anchor: the service, the
+  expected birth, the birth, or weaning. Each step is for the dam or her litter. New
+  farm businesses get an example sow protocol, marked as not vet-approved, with no
+  products or doses. Each farm should set its own with its vet.
+- **Recording a service** starts a breeding cycle. The expected birth date comes from
+  the species' gestation length (114 days for pigs). The service and expected-birth
+  steps then become tasks.
+- **A negative pregnancy check** closes the cycle and cancels its open tasks.
+- **Recording the birth** creates the litter as an animal group. It also schedules the
+  litter's tasks from the real birth date, and moves steps planned for the expected
+  birth day or later to the real date.
+- **Recording weaning** sets the litter's head count to the number weaned and schedules
+  the post-weaning steps. Any difference from the head count shows up as pre-weaning
+  mortality in the litter report.
+- **Pregnancy checks, births and weaning are ticked off by the cycle itself.** The tasks
+  endpoint refuses them, so the records always match the tasks.
+- **Editing a protocol** moves open tasks in running cycles to the new timing. Tasks for
+  removed steps are cancelled, and new steps are scheduled unless they would already be
+  late. Done tasks never change. An edit also clears the vet approval unless the same
+  request sets it again.
+- **Overdue is worked out on the day,** never stored: a task is overdue when it is still
+  open after its window ends. List endpoints take an `on` date to judge this in the
+  farm's time zone.
+- **`GET /v1/tasks/reminders`** returns the reminders due on a day and the overdue
+  tasks to escalate. The WhatsApp and SMS sender will read from it.
 
 ## Sign-in (temporary)
 
@@ -155,9 +192,9 @@ nothing below `core/deps.py` changes when it lands.
 ## Not done yet
 
 - Phone sign-in, users and roles (owner, manager, worker…), and permission checks.
-- Breeding protocols and scheduled tasks: sow calendars, vaccine reminders, recurring
-  dipping.
-- Feed recipes and mixing (the production batch), and linking treatments to stock issues.
+- Sending reminders by WhatsApp and SMS (the reminders query is ready).
+- Recurring activities such as dipping, and fostering piglets between litters.
+- Feed recipes and mixing (the production batch).
 - The offline sync endpoint ("changes since cursor"), the profit engine and licensing.
 - The Docker image has not been built and tested yet; the code was tested against a
   local PostgreSQL 16.
